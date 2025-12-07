@@ -115,6 +115,7 @@ impl SimpleFunctionExecutor for Executor {
                 name: Cow::Borrowed("ExtractedData"),
                 schema: Cow::Borrowed(&self.output_json_schema),
             }),
+            progress_callback: None, // Streaming not used for extraction
         };
         let res = self.client.generate(req).await?;
         let json_value: serde_json::Value = utils::deser::from_json_str(res.text.as_str())?;

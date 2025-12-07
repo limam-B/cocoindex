@@ -1,6 +1,7 @@
 use crate::prelude::*;
 
-use super::{LlmEmbeddingClient, LlmGenerationClient};
+use super::{LlmEmbeddingClient, LlmGenerationClient, LlmProgressUpdate};
+use futures::StreamExt;
 use schemars::schema::SchemaObject;
 use serde_with::{base64::Base64, serde_as};
 
@@ -56,6 +57,14 @@ struct OllamaResponse {
     pub response: String,
 }
 
+/// Streaming response from Ollama (one chunk at a time)
+#[derive(Debug, Deserialize)]
+struct OllamaStreamResponse {
+    pub response: String,
+    #[serde(default)]
+    pub done: bool,
+}
+
 #[derive(Debug, Serialize)]
 struct OllamaEmbeddingRequest<'a> {
     pub model: &'a str,
@@ -89,6 +98,9 @@ impl LlmGenerationClient for Client {
         &self,
         request: super::LlmGenerateRequest<'req>,
     ) -> Result<super::LlmGenerateResponse> {
+        // Check if we have a progress callback for streaming
+        let use_streaming = request.progress_callback.is_some();
+
         let req = OllamaRequest {
             model: request.model,
             prompt: request.user_prompt.as_ref(),
@@ -99,19 +111,67 @@ impl LlmGenerationClient for Client {
                 },
             ),
             system: request.system_prompt.as_ref().map(|s| s.as_ref()),
-            stream: Some(false),
+            stream: Some(use_streaming),
         };
-        let res = http::request(|| {
-            self.reqwest_client
+
+        if use_streaming {
+            // Streaming mode with progress callback
+            let progress_callback = request.progress_callback.unwrap();
+            let response = self
+                .reqwest_client
                 .post(self.generate_url.as_str())
                 .json(&req)
-        })
-        .await
-        .context("Ollama API error")?;
-        let json: OllamaResponse = res.json().await?;
-        Ok(super::LlmGenerateResponse {
-            text: json.response,
-        })
+                .send()
+                .await
+                .context("Ollama API error")?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let error_text = response.text().await.unwrap_or_default();
+                bail!("Ollama API error: {} - {}", status, error_text);
+            }
+
+            let mut full_response = String::new();
+            let mut stream = response.bytes_stream();
+
+            while let Some(chunk_result) = stream.next().await {
+                let chunk = chunk_result.context("Error reading stream chunk")?;
+
+                // Parse each line as a JSON object (Ollama sends newline-delimited JSON)
+                for line in chunk.split(|&b| b == b'\n') {
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    if let Ok(stream_resp) = serde_json::from_slice::<OllamaStreamResponse>(line) {
+                        full_response.push_str(&stream_resp.response);
+
+                        // Call progress callback with the chunk
+                        progress_callback(LlmProgressUpdate {
+                            text_chunk: stream_resp.response,
+                            done: stream_resp.done,
+                        });
+                    }
+                }
+            }
+
+            Ok(super::LlmGenerateResponse {
+                text: full_response,
+            })
+        } else {
+            // Non-streaming mode (original behavior)
+            let res = http::request(|| {
+                self.reqwest_client
+                    .post(self.generate_url.as_str())
+                    .json(&req)
+            })
+            .await
+            .context("Ollama API error")?;
+            let json: OllamaResponse = res.json().await?;
+            Ok(super::LlmGenerateResponse {
+                text: json.response,
+            })
+        }
     }
 
     fn json_schema_options(&self) -> super::ToJsonSchemaOptions {
