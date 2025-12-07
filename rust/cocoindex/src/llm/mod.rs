@@ -10,6 +10,7 @@ static INFER: LazyLock<Infer> = LazyLock::new(Infer::new);
 
 /// Progress update for streaming LLM responses
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields are read by callback consumers
 pub struct LlmProgressUpdate {
     /// The text chunk received in this update
     pub text_chunk: String,
