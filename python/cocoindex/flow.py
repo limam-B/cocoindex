@@ -683,6 +683,66 @@ class FlowLiveUpdater:
         """
         return self._get_engine_live_updater().index_update_info()
 
+    def set_progress_callback(self, callback: Callable[[dict], None]) -> None:
+        """Set a progress callback to receive events from Rust and Python operations.
+
+        Args:
+            callback: Function that receives progress event dict with keys:
+                - type: Event type (operation_started, operation_progress, operation_completed)
+                - operation_name: Name of the operation
+                - message: Progress message
+                - current/completed: Current item count
+                - total: Total item count
+
+        Note: This integrates both Rust progress events and Python file-based IPC.
+        """
+        from . import progress
+
+        # Handler for Rust events
+        def on_rust_event(event: dict) -> None:
+            # Route Rust events to Python progress system
+            event_type = event.get("type", "")
+            if event_type == "operation_progress":
+                operation_name = event.get("operation_name", "unknown")
+                completed = event.get("completed", 0)
+                total = event.get("total", 0)
+                message = event.get("message", "Processing")
+                progress.report_progress(operation_name, message, completed, total)
+
+            # Call user's callback
+            callback(event)
+
+        # Register with Rust system
+        self._get_engine_live_updater().set_progress_callback(on_rust_event)
+
+        # Create Python progress handlers for common operations
+        def create_python_progress_handler(op_name: str):
+            def handler(message: str, current: int, total: int):
+                callback({
+                    "type": "operation_progress",
+                    "operation_name": op_name,
+                    "message": message,
+                    "completed": current,
+                    "total": total,
+                })
+            return handler
+
+        # Register with Python progress system for operations that may run in workers
+        for operation in ["embedding", "chunking", "transform", "collect"]:
+            handler = create_python_progress_handler(operation)
+            progress.set_progress_callback(operation, handler)
+
+    def clear_progress_callback(self) -> None:
+        """Clear the progress callback."""
+        from . import progress
+
+        # Clear Python callbacks
+        for operation in ["embedding", "chunking", "transform", "collect"]:
+            progress.clear_progress_callback(operation)
+
+        # Clear Rust callback
+        self._get_engine_live_updater().clear_progress_callback()
+
     def _get_engine_live_updater(self) -> _engine.FlowLiveUpdater:
         if self._engine_live_updater is None:
             raise RuntimeError("Live updater is not started")

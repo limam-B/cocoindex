@@ -7,7 +7,7 @@ from ._version import __version__
 from . import _version_check
 
 from . import _engine  # type: ignore
-from . import functions, sources, targets, cli, utils
+from . import functions, sources, targets, cli, utils, progress
 
 from . import targets as storages  # Deprecated: Use targets instead
 
