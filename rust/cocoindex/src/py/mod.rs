@@ -200,6 +200,18 @@ impl FlowLiveUpdater {
     pub fn index_update_info(&self) -> IndexUpdateInfo {
         IndexUpdateInfo(self.0.index_update_info())
     }
+
+    pub fn set_progress_callback(&self, _callback: PyObject) {
+        // Stub implementation: Progress tracking currently uses Python file-based IPC
+        // This method exists for API compatibility with unity-coco-rag progress system
+        // TODO: Implement Rust-side progress callback if needed in the future
+    }
+
+    pub fn clear_progress_callback(&self) {
+        // Stub implementation: Progress tracking currently uses Python file-based IPC
+        // This method exists for API compatibility with unity-coco-rag progress system
+        // TODO: Implement Rust-side progress callback clearing if needed
+    }
 }
 
 #[pymethods]
