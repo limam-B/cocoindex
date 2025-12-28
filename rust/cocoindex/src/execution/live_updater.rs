@@ -14,6 +14,10 @@ use tracing::Level;
 pub struct FlowLiveUpdaterUpdates {
     pub active_sources: Vec<String>,
     pub updated_sources: Vec<String>,
+    /// Per-operation in-process counts (e.g., {"CustomEmbedWithProgress": 128})
+    pub operation_in_process: std::collections::HashMap<String, i64>,
+    /// Total in-process count across all operations
+    pub total_in_process: i64,
 }
 struct FlowLiveUpdaterStatus {
     pub active_source_idx: BTreeSet<usize>,
@@ -624,6 +628,8 @@ impl FlowLiveUpdater {
             return Ok(FlowLiveUpdaterUpdates {
                 active_sources: vec![],
                 updated_sources: vec![],
+                operation_in_process: std::collections::HashMap::new(),
+                total_in_process: 0,
             });
         }
 
@@ -655,6 +661,9 @@ impl FlowLiveUpdater {
                     }
                 })
                 .collect(),
+            // Add operation progress tracking
+            operation_in_process: self.operation_in_process_stats.get_all_operations_in_process(),
+            total_in_process: self.operation_in_process_stats.get_total_in_process_count(),
         };
         recv_state.last_num_source_updates = status.source_updates_num.clone();
         if status.active_source_idx.is_empty() {

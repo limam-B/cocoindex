@@ -139,6 +139,16 @@ impl FlowLiveUpdaterUpdates {
     pub fn updated_sources(&self) -> Vec<String> {
         self.0.updated_sources.clone()
     }
+
+    #[getter]
+    pub fn operation_in_process(&self) -> std::collections::HashMap<String, i64> {
+        self.0.operation_in_process.clone()
+    }
+
+    #[getter]
+    pub fn total_in_process(&self) -> i64 {
+        self.0.total_in_process
+    }
 }
 
 #[pyclass]

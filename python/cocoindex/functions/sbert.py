@@ -25,6 +25,7 @@ class SentenceTransformerEmbed(op.FunctionSpec):
 
     model: str
     args: dict[str, Any] | None = None
+    flow_name: str = "default"
 
 
 @op.executor_class(
@@ -64,14 +65,47 @@ class SentenceTransformerEmbedExecutor:
         # Sort the text by length to minimize the number of padding tokens.
         text_with_idx = [(idx, t) for idx, t in enumerate(text)]
         text_with_idx.sort(key=lambda x: len(x[1]))
+        sorted_texts = [t for _, t in text_with_idx]
 
-        results: list[NDArray[np.float32]] = self._model.encode(
-            [t for _, t in text_with_idx], convert_to_numpy=True
-        )
+        # Create progress reporter (file-based IPC for cross-process progress)
+        from ..progress import ProgressReporter
+        progress = ProgressReporter("embedding", len(text), flow_name=self.spec.flow_name)
+
+        # Process in smaller batches for frequent progress updates and better memory management
+        batch_size = min(4, len(sorted_texts))  # Process 4 items at a time to reduce VRAM usage
+        all_results: list[NDArray[np.float32]] = []
+
+        for i in range(0, len(sorted_texts), batch_size):
+            batch_texts = sorted_texts[i:i + batch_size]
+            batch_results = self._model.encode(
+                batch_texts,
+                convert_to_numpy=True,
+                show_progress_bar=False  # Disable internal progress bar
+            )
+            all_results.extend(batch_results)
+
+            # Free intermediate memory immediately
+            del batch_results
+
+            # Clear GPU cache after each sub-batch to prevent VRAM buildup
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass  # torch not available, skip cache clearing
+
+            # Report progress to file (visible to main process)
+            progress.update(len(batch_texts), f"batch {i//batch_size + 1}")
+
+        # Restore original order
         final_results: list[NDArray[np.float32] | None] = [
             None for _ in range(len(text))
         ]
-        for (idx, _), result in zip(text_with_idx, results):
+        for (idx, _), result in zip(text_with_idx, all_results):
             final_results[idx] = result
+
+        # Report completion (triggers LLM extraction detection for code flow)
+        progress.complete("Embedding complete")
 
         return cast(list[NDArray[np.float32]], final_results)

@@ -4,8 +4,22 @@ use crate::base::json_schema::ToJsonSchemaOptions;
 use infer::Infer;
 use schemars::schema::SchemaObject;
 use std::borrow::Cow;
+use std::sync::Arc;
 
 static INFER: LazyLock<Infer> = LazyLock::new(Infer::new);
+
+/// Progress update for streaming LLM responses
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields are read by callback consumers
+pub struct LlmProgressUpdate {
+    /// The text chunk received in this update
+    pub text_chunk: String,
+    /// Whether this is the final chunk
+    pub done: bool,
+}
+
+/// Callback type for progress updates during LLM generation
+pub type ProgressCallback = Arc<dyn Fn(LlmProgressUpdate) + Send + Sync>;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum LlmApiType {
@@ -72,6 +86,8 @@ pub struct LlmGenerateRequest<'a> {
     pub user_prompt: Cow<'a, str>,
     pub image: Option<Cow<'a, [u8]>>,
     pub output_format: Option<OutputFormat<'a>>,
+    /// Optional callback for streaming progress updates (currently supported by Ollama)
+    pub progress_callback: Option<ProgressCallback>,
 }
 
 #[derive(Debug)]
