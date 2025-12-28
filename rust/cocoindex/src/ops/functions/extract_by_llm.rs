@@ -116,6 +116,7 @@ impl SimpleFunctionExecutor for Executor {
                 name: Cow::Borrowed("ExtractedData"),
                 schema: Cow::Borrowed(&self.output_json_schema),
             }),
+            progress_callback: None,
         };
         let res = self.client.generate(req).await?;
         let json_value = match res.output {

@@ -79,7 +79,6 @@ pub enum OutputFormat<'a> {
     },
 }
 
-#[derive(Debug)]
 pub struct LlmGenerateRequest<'a> {
     pub model: &'a str,
     pub system_prompt: Option<Cow<'a, str>>,
