@@ -14,13 +14,17 @@ import json
 import datetime
 from typing import Callable, Dict
 from pathlib import Path
+import os
 
 # Global progress callback registry (same-process only)
 _progress_callbacks: Dict[str, Callable[[str, int, int], None]] = {}
 _progress_lock = threading.Lock()
 
-# Debug logging
-_debug_log_path = Path("C:/Users/m-bel/Desktop/Github/unity-coco-rag/logs/progress_debug.log")
+# Debug logging - use relative path from current working directory
+# This assumes the script is run from the project root (standard practice)
+_logs_dir = Path(os.getcwd()) / "logs"
+_logs_dir.mkdir(parents=True, exist_ok=True)
+_debug_log_path = _logs_dir / "progress_debug.log"
 
 
 def _debug_log(msg: str):
@@ -111,10 +115,8 @@ class ProgressReporter:
         self.total_items = total_items
         self.current_item = 0
         self.flow_name = flow_name
-        self.progress_file = Path("C:/Users/m-bel/Desktop/Github/unity-coco-rag/logs/progress_ipc.jsonl")
-
-        # Ensure log directory exists
-        self.progress_file.parent.mkdir(parents=True, exist_ok=True)
+        # Use the same logs directory initialized at module level
+        self.progress_file = _logs_dir / "progress_ipc.jsonl"
 
         _debug_log(f"✅ ProgressReporter created: {operation_name} flow={flow_name} (total={total_items})")
 
